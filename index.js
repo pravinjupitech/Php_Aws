@@ -704,6 +704,71 @@ app.get("/api/localDataAttendance/:database", async function (req, res, next) {
   }
 });
 
+app.post("/api/create-bucket", async (req, res) => {
+  const { bucketName } = req.body;
+
+  if (!bucketName) {
+    return res
+      .status(400)
+      .send({ error: "Bucket name is required", status: false });
+  }
+
+  const params = {
+    Bucket: bucketName,
+  };
+  try {
+    const data = await s3.createBucket(params).promise();
+    res.status(201).send({
+      message: `Bucket "${bucketName}" created successfully `,
+      location: data.Location,
+      status: true,
+    });
+  } catch (error) {
+    console.error(`Error creating bucket: ${error.message}`);
+    if (error.code === "BucketAlreadyOwnedByYou") {
+      res.status(400).send({
+        error: `Bucket "${bucketName}" already exists and is owned by you`,
+      });
+    } else {
+      res.status(500).send({
+        error: `Error creating bucket: ${error.message}`,
+        status: false,
+      });
+    }
+  }
+});
+
+app.delete("/api/delete-bucket", async (req, res) => {
+  const { bucketName } = req.body;
+
+  if (!bucketName) {
+    return res
+      .status(400)
+      .send({ error: "Bucket name is required", status: false });
+  }
+  const params = {
+    Bucket: bucketName,
+  };
+  try {
+    await s3.deleteBucket(params).promise();
+    res.status(200).send({
+      message: `Bucket "${bucketName}" deleted successfully`,
+      status: true,
+    });
+  } catch (error) {
+    console.error(`Error deleting bucket: ${error.message}`);
+    if (error.code === "NoSuchBucket") {
+      res
+        .status(404)
+        .send({ error: `Bucket "${bucketName}" not found`, status: false });
+    } else {
+      res
+        .status(500)
+        .send({ error: `Error deleting bucket: ${error.message}` });
+    }
+  }
+});
+
 app.get("/api/listCollections", (req, res) => {
   try {
     rekognition.listCollections({}, (err, data) => {
