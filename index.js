@@ -496,7 +496,7 @@ const s3 = new AWS.S3({
 app.post("/api/register", upload.single("image"), async (req, res) => {
   try {
     const base64Data = req.body.image.replace("data:image/jpeg;base64,", "");
-    console.log(base64Data);
+    console.log("base64Data", base64Data);
     // data:image/jpg;base64,
     // const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, "");
     const imageBuffer = Buffer.from(base64Data, "base64");
