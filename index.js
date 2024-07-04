@@ -535,10 +535,13 @@ const isValidImageFormat = (imageBuffer) => {
   if (!Buffer.isBuffer(imageBuffer)) {
     return false;
   }
+
+  // Check for JPEG format
   if (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8) {
     return true;
   }
 
+  // Check for PNG format
   if (
     imageBuffer[0] === 0x89 &&
     imageBuffer[1] === 0x50 &&
@@ -568,6 +571,7 @@ const indexFaces = async (req, res, registerData) => {
         ),
       },
     };
+
     rekognition.indexFaces(params, (err, data) => {
       if (err) {
         console.error("Error indexing faces:", err);
