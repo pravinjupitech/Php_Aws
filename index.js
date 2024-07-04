@@ -535,7 +535,6 @@ const isValidImageFormat = (imageBuffer) => {
   if (!Buffer.isBuffer(imageBuffer)) {
     return false;
   }
-  t;
   if (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8) {
     return true;
   }
