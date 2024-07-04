@@ -501,9 +501,9 @@ app.post("/api/register", upload.single("image"), async (req, res) => {
     // const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, "");
     const imageBuffer = Buffer.from(base64Data, "base64");
 
-    // if (!isValidImageFormat(imageBuffer)) {
-    //   return res.status(400).json({ error: "Invalid image format" });
-    // }
+    if (!isValidImageFormat(imageBuffer)) {
+      return res.status(400).json({ error: "Invalid image format" });
+    }
 
     const params = {
       Bucket: process.env.Bucket,
@@ -535,27 +535,27 @@ app.post("/api/register", upload.single("image"), async (req, res) => {
   }
 });
 
-// const isValidImageFormat = (imageBuffer) => {
-//   if (!Buffer.isBuffer(imageBuffer)) {
-//     return false;
-//   }
+const isValidImageFormat = (imageBuffer) => {
+  if (!Buffer.isBuffer(imageBuffer)) {
+    return false;
+  }
 
-//   if (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8) {
-//     return true;
-//   } else if (
-//     imageBuffer[0] === 0x89 &&
-//     imageBuffer[1] === 0x50 &&
-//     imageBuffer[2] === 0x4e &&
-//     imageBuffer[3] === 0x47 &&
-//     imageBuffer[4] === 0x0d &&
-//     imageBuffer[5] === 0x0a &&
-//     imageBuffer[6] === 0x1a &&
-//     imageBuffer[7] === 0x0a
-//   ) {
-//     return true;
-//   }
-//   return false;
-// };
+  if (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8) {
+    return true;
+  } else if (
+    imageBuffer[0] === 0x89 &&
+    imageBuffer[1] === 0x50 &&
+    imageBuffer[2] === 0x4e &&
+    imageBuffer[3] === 0x47 &&
+    imageBuffer[4] === 0x0d &&
+    imageBuffer[5] === 0x0a &&
+    imageBuffer[6] === 0x1a &&
+    imageBuffer[7] === 0x0a
+  ) {
+    return true;
+  }
+  return false;
+};
 const indexFaces = async (req, res, registerData) => {
   try {
     const paths = klawSync("./faces", { nodir: true, ignore: ["*.json"] });
