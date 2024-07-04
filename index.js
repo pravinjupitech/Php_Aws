@@ -562,7 +562,10 @@ const indexFaces = async (req, res, registerData) => {
       DetectionAttributes: ["ALL"],
       ExternalImageId: `${registerData.userId}-${req.body.fullName}`,
       Image: {
-        Bytes: imageBuffer,
+        Bytes: Buffer.from(
+          registerData.image.replace(/^data:image\/\w+;base64,/, ""),
+          "base64"
+        ),
       },
     };
     rekognition.indexFaces(params, (err, data) => {
