@@ -494,10 +494,9 @@ const s3 = new AWS.S3({
 });
 
 app.post("/api/register", upload.single("image"), async (req, res) => {
-  console.log("requestbody", req.body);
-  res.send(req.body);
   try {
     const base64Data = req.body.image.replace("data:image/jpeg;base64,", "");
+    // data:image/jpg;base64,
     // const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, "");
     const imageBuffer = Buffer.from(base64Data, "base64");
 
@@ -588,14 +587,19 @@ const indexFaces = async (req, res, registerData) => {
               reject(err);
               return;
             }
-            try {
-              await indexFacesAndUpdate(req, res, registerData, data);
-              await fs.writeJson(file.path + ".json", JSON.stringify(data));
-              resolve();
-            } catch (error) {
-              console.log("Error updating or writing JSON:", error);
-              reject(error);
-            }
+            res.status(200).json({
+              message: "Image uploaded and processed successfully",
+              data,
+              registerData,
+            });
+            // try {
+            //   await indexFacesAndUpdate(req, res, registerData, data);
+            //   await fs.writeJson(file.path + ".json", JSON.stringify(data));
+            //   resolve();
+            // } catch (error) {
+            //   console.log("Error updating or writing JSON:", error);
+            //   reject(error);
+            // }
           });
         });
       } catch (error) {
@@ -608,37 +612,37 @@ const indexFaces = async (req, res, registerData) => {
   }
 };
 
-const indexFacesAndUpdate = async (
-  req,
-  res,
-  registerData,
-  rekognitionResponse
-) => {
-  try {
-    const id = registerData.userId;
-    const faceId = rekognitionResponse.FaceRecords[0].Face.FaceId;
-    const externalImageId =
-      rekognitionResponse.FaceRecords[0].Face.ExternalImageId;
-    const imageUrl = registerData.imageUrl;
-    const updateUserUrl = `https://customer-node.rupioo.com/user/update-user/${id}`;
-    const updateData = {
-      faceId,
-      externalImageId,
-      image: imageUrl,
-      imageUrl,
-    };
-    const response = await axios.post(updateUserUrl, updateData);
-    console.log("Update successful:", response.data);
-    res.status(200).json({
-      message: "Image uploaded and processed successfully",
-      updateData,
-      rekognitionResponse,
-    });
-  } catch (error) {
-    console.log("Error updating data:", error);
-    res.status(500).json({ error: "Error updating data" });
-  }
-};
+// const indexFacesAndUpdate = async (
+//   req,
+//   res,
+//   registerData,
+//   rekognitionResponse
+// ) => {
+//   try {
+//     const id = registerData.userId;
+//     const faceId = rekognitionResponse.FaceRecords[0].Face.FaceId;
+//     const externalImageId =
+//       rekognitionResponse.FaceRecords[0].Face.ExternalImageId;
+//     const imageUrl = registerData.imageUrl;
+//     const updateUserUrl = `https://customer-node.rupioo.com/user/update-user/${id}`;
+//     const updateData = {
+//       faceId,
+//       externalImageId,
+//       image: imageUrl,
+//       imageUrl,
+//     };
+//     const response = await axios.post(updateUserUrl, updateData);
+//     console.log("Update successful:", response.data);
+//     res.status(200).json({
+//       message: "Image uploaded and processed successfully",
+//       updateData,
+//       rekognitionResponse,
+//     });
+//   } catch (error) {
+//     console.log("Error updating data:", error);
+//     res.status(500).json({ error: "Error updating data" });
+//   }
+// };
 
 app.get("/api/attendanceAws/:database", async function (req, res, next) {
   try {
