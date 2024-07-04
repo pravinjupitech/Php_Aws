@@ -98,7 +98,7 @@ app.post("/api/recognize", upload.single("image"), async (req, res) => {
   let fullName;
   const imageBuffer = Buffer?.from(base64Data, "base64");
   if (!isValidImageFormat(imageBuffer)) {
-    return res.status(400).json({ error: "Invalid image format" });
+    return res.json({ message: "Invalid image format", status: true });
   }
 
   try {
@@ -214,9 +214,9 @@ app.post("/api/recognize", upload.single("image"), async (req, res) => {
                 .json({ error: "Internal server error", status: false });
             }
           } else {
-            return res.status(400).json({
+            return res.json({
               message: "Invalid time of Intime Shift.",
-              status: false,
+              status: true,
             });
           }
         } else {
@@ -244,7 +244,7 @@ app.post("/api/recognize", upload.single("image"), async (req, res) => {
                 { new: true }
               );
               if (!attendanceRecord) {
-                return res.status(404).json({
+                return res.json({
                   message: "Attendance record not found for updating outTime",
                   status: false,
                 });
@@ -265,15 +265,14 @@ app.post("/api/recognize", upload.single("image"), async (req, res) => {
                 .json({ error: "Internal server error", status: false });
             }
           } else {
-            return res.status(400).json({
+            return res.json({
               message: "Invalid time of OutTime Shift...",
-              status: false,
+              status: true,
             });
           }
         }
       }
     }
-
     res.json({ match: false, message: "No matching faces found" });
   } catch (error) {
     console.error("Error in face recognition:", error);
@@ -495,6 +494,8 @@ const s3 = new AWS.S3({
 });
 
 app.post("/api/register", upload.single("image"), async (req, res) => {
+  console.log("requestbody", req.body);
+  res.send(req.body);
   try {
     const base64Data = req.body.image.replace("data:image/jpeg;base64,", "");
     // const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, "");
@@ -768,7 +769,6 @@ app.delete("/api/delete-bucket", async (req, res) => {
     }
   }
 });
-
 app.get("/api/listCollections", (req, res) => {
   try {
     rekognition.listCollections({}, (err, data) => {
@@ -890,6 +890,81 @@ function createCollection(req, res) {
     }
   );
 }
+
+app.get("/attendance-calculate-employee/:id", async (req, res) => {
+  try {
+    let attendanceTotal = [];
+    let totalMonthHours = 0;
+    let totalHours = 0;
+    let salary = 0;
+    let totalOverTime = 0;
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth();
+    const currentYear = currentDate.getFullYear();
+    const firstDayOfPreviousMonth = new Date(currentYear, currentMonth - 1, 1);
+    const lastDayOfPreviousMonth = new Date(currentYear, currentMonth, 0);
+    const formattedFirstDay = formatDate(firstDayOfPreviousMonth);
+    const formattedLastDay = formatDate(lastDayOfPreviousMonth);
+    const attendances = await AttendanceAws.find({
+      userId: req.params.id,
+      currentDate: { $gte: formattedFirstDay, $lte: formattedLastDay },
+    });
+    if (attendances.length > 0) {
+      for (let attendance of attendances) {
+        const result = await calculateAttendance(attendance);
+        totalHours += result.monthHours;
+        attendanceTotal.push({
+          details: attendance,
+          attendance: result,
+          totalHours: totalHours,
+        });
+      }
+    }
+    attendanceTotal.forEach((item) => {
+      totalMonthHours += item.attendance.monthHours;
+      totalOverTime += item.attendance.overTime;
+      // console.log(totalOverTime)
+    });
+    return res
+      .status(200)
+      .json({ attendanceTotal, totalMonthHours, totalOverTime });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+const formatDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0"); // Zero-based index
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+const calculateAttendance = (attendanceData) => {
+  const { intime, outtime, currentDate, shift } = attendanceData;
+  const minLength = Math.min(intime.length, outtime.length);
+  let totalWorkingHours = 0;
+  let monthHours = 0;
+  let time = 0;
+  for (let i = 0; i < minLength; i++) {
+    const inTimeMs = new Date(`${currentDate} ${intime[i]}`).getTime();
+    const outTimeMs = new Date(`${currentDate} ${outtime[i]}`).getTime();
+    const workingHoursMs = Math.max(0, outTimeMs - inTimeMs);
+    const workingHours = workingHoursMs / (1000 * 60 * 60);
+    totalWorkingHours += workingHours;
+  }
+  time = totalWorkingHours - shift.totalHours;
+  const overTime = time > 0 ? time : 0;
+  const attendancePercentage = (totalWorkingHours / 9) * 100;
+  monthHours = monthHours + totalWorkingHours;
+  return {
+    currentDate,
+    totalWorkingHours,
+    attendancePercentage,
+    monthHours,
+    overTime,
+    shift,
+  };
+};
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
