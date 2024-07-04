@@ -492,9 +492,14 @@ const s3 = new AWS.S3({
   secretAccessKey: process.env.secretAccessKey,
   region: process.env.region,
 });
+
 app.post("/api/register", upload.single("image"), async (req, res) => {
   try {
-    const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, "");
+    const base64Data = req.body.image.replace("data:image/jpeg;base64,", "");
+    // const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, "");
+    console.log("base64Data", base64Data);
+    // data:image/jpg;base64,
+    // const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, "");
     const imageBuffer = Buffer.from(base64Data, "base64");
 
     if (!isValidImageFormat(imageBuffer)) {
@@ -512,7 +517,7 @@ app.post("/api/register", upload.single("image"), async (req, res) => {
 
     s3.upload(params, async (err, data) => {
       if (err) {
-        console.error("Error uploading file to S3:", err);
+        console.log("Error uploading file to S3:", err);
         return res.status(500).json({ error: "Error uploading file to S3." });
       }
 
@@ -522,11 +527,11 @@ app.post("/api/register", upload.single("image"), async (req, res) => {
         imageUrl,
         image: req.body.image,
       };
-
+      // fs.unlinkSync(req.file.path);
       await indexFaces(req, res, registrationData);
     });
   } catch (error) {
-    console.error("Error registering:", error);
+    console.log("Error registering:", error);
     res.status(500).json({ error: "Error registering" });
   }
 });
@@ -536,13 +541,9 @@ const isValidImageFormat = (imageBuffer) => {
     return false;
   }
 
-  // Check for JPEG format
   if (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8) {
     return true;
-  }
-
-  // Check for PNG format
-  if (
+  } else if (
     imageBuffer[0] === 0x89 &&
     imageBuffer[1] === 0x50 &&
     imageBuffer[2] === 0x4e &&
@@ -554,196 +555,96 @@ const isValidImageFormat = (imageBuffer) => {
   ) {
     return true;
   }
-
   return false;
 };
-
 const indexFaces = async (req, res, registerData) => {
   try {
-    const params = {
-      CollectionId: req.body.collectionId,
-      DetectionAttributes: ["ALL"],
-      ExternalImageId: `${registerData.userId}-${req.body.fullName}`,
-      Image: {
-        Bytes: Buffer.from(
-          registerData.image.replace(/^data:image\/\w+;base64,/, ""),
-          "base64"
-        ),
-      },
-    };
+    const paths = klawSync("./faces", { nodir: true, ignore: ["*.json"] });
 
-    rekognition.indexFaces(params, (err, data) => {
-      if (err) {
-        console.error("Error indexing faces:", err);
-        if (err.code === "InvalidImageFormatException") {
-          return res.status(400).json({ error: "Invalid image format" });
-        }
-        return res.status(500).json({ error: "Error indexing faces" });
+    for (const file of paths) {
+      const imageBuffer = fs.readFileSync(file.path);
+      if (!isValidImageFormat(imageBuffer)) {
+        console.error("Unsupported image format");
+        continue;
       }
-
-      res.status(200).json({
-        message: "Image uploaded and processed successfully",
-        data,
-        registerData,
-      });
-    });
+      try {
+        const params = {
+          CollectionId: req.body.collectionId,
+          DetectionAttributes: ["ALL"],
+          ExternalImageId: `${registerData.userId}-${req.body.fullName}`,
+          Image: {
+            Bytes: imageBuffer,
+          },
+        };
+        await new Promise((resolve, reject) => {
+          rekognition.indexFaces(params, async (err, data) => {
+            if (err) {
+              console.error("Error indexing faces:", err);
+              if (err.code === "InvalidImageFormatException") {
+                console.log(
+                  "Invalid image format detected. Check the image being passed."
+                );
+                return res.status(400).json({ error: "Invalid image format" });
+              }
+              reject(err);
+              return;
+            }
+            res.status(200).json({
+              message: "Image uploaded and processed successfully",
+              data,
+              registerData,
+            });
+            // try {
+            //   await indexFacesAndUpdate(req, res, registerData, data);
+            //   await fs.writeJson(file.path + ".json", JSON.stringify(data));
+            //   resolve();
+            // } catch (error) {
+            //   console.log("Error updating or writing JSON:", error);
+            //   reject(error);
+            // }
+          });
+        });
+      } catch (error) {
+        console.log("Error processing image:", error);
+      }
+    }
   } catch (error) {
-    console.error("Error processing images:", error);
+    console.log("Error processing images:", error);
     res.status(500).json({ error: "Error processing images" });
   }
 };
-// app.post("/api/register", upload.single("image"), async (req, res) => {
-//   try {
-//     const base64Data = req.body.image.replace("data:image/jpeg;base64,", "");
-//     // const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, "");
-//     console.log("base64Data", base64Data);
-//     // data:image/jpg;base64,
-//     // const base64Data = req.body.image.replace(/^data:image\/\w+;base64,/, "");
-//     const imageBuffer = Buffer.from(base64Data, "base64");
 
-//     if (!isValidImageFormat(imageBuffer)) {
-//       return res.status(400).json({ error: "Invalid image format" });
-//     }
-
-//     const params = {
-//       Bucket: process.env.Bucket,
-//       Key: `${req.body.fullName}-${req.body.userId}.jpg`,
-//       Body: imageBuffer,
-//       ContentEncoding: "base64",
-//       ContentType: "image/jpeg",
-//       ACL: "public-read",
-//     };
-
-//     s3.upload(params, async (err, data) => {
-//       if (err) {
-//         console.log("Error uploading file to S3:", err);
-//         return res.status(500).json({ error: "Error uploading file to S3." });
-//       }
-
-//       const imageUrl = data.Location;
-//       const registrationData = {
-//         userId: req.body.userId,
-//         imageUrl,
-//         image: req.body.image,
-//       };
-//       // fs.unlinkSync(req.file.path);
-//       await indexFaces(req, res, registrationData);
-//     });
-//   } catch (error) {
-//     console.log("Error registering:", error);
-//     res.status(500).json({ error: "Error registering" });
-//   }
-// });
-
-// const isValidImageFormat = (imageBuffer) => {
-//   if (!Buffer.isBuffer(imageBuffer)) {
-//     return false;
-//   }
-
-//   if (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8) {
-//     return true;
-//   } else if (
-//     imageBuffer[0] === 0x89 &&
-//     imageBuffer[1] === 0x50 &&
-//     imageBuffer[2] === 0x4e &&
-//     imageBuffer[3] === 0x47 &&
-//     imageBuffer[4] === 0x0d &&
-//     imageBuffer[5] === 0x0a &&
-//     imageBuffer[6] === 0x1a &&
-//     imageBuffer[7] === 0x0a
-//   ) {
-//     return true;
-//   }
-//   return false;
-// };
-// const indexFaces = async (req, res, registerData) => {
-//   try {
-//     const paths = klawSync("./faces", { nodir: true, ignore: ["*.json"] });
-
-//     for (const file of paths) {
-//       const imageBuffer = fs.readFileSync(file.path);
-//       if (!isValidImageFormat(imageBuffer)) {
-//         console.error("Unsupported image format");
-//         continue;
-//       }
-//       try {
-//         const params = {
-//           CollectionId: req.body.collectionId,
-//           DetectionAttributes: ["ALL"],
-//           ExternalImageId: `${registerData.userId}-${req.body.fullName}`,
-//           Image: {
-//             Bytes: imageBuffer,
-//           },
-//         };
-//         await new Promise((resolve, reject) => {
-//           rekognition.indexFaces(params, async (err, data) => {
-//             if (err) {
-//               console.error("Error indexing faces:", err);
-//               if (err.code === "InvalidImageFormatException") {
-//                 console.log(
-//                   "Invalid image format detected. Check the image being passed."
-//                 );
-//                 return res.status(400).json({ error: "Invalid image format" });
-//               }
-//               reject(err);
-//               return;
-//             }
-//             res.status(200).json({
-//               message: "Image uploaded and processed successfully",
-//               data,
-//               registerData,
-//             });
-//             // try {
-//             //   await indexFacesAndUpdate(req, res, registerData, data);
-//             //   await fs.writeJson(file.path + ".json", JSON.stringify(data));
-//             //   resolve();
-//             // } catch (error) {
-//             //   console.log("Error updating or writing JSON:", error);
-//             //   reject(error);
-//             // }
-//           });
-//         });
-//       } catch (error) {
-//         console.log("Error processing image:", error);
-//       }
-//     }
-//   } catch (error) {
-//     console.log("Error processing images:", error);
-//     res.status(500).json({ error: "Error processing images" });
-//   }
-// };
-
-// const indexFacesAndUpdate = async (
-//   req,
-//   res,
-//   registerData,
-//   rekognitionResponse
-// ) => {
-//   try {
-//     const id = registerData.userId;
-//     const faceId = rekognitionResponse.FaceRecords[0].Face.FaceId;
-//     const externalImageId =
-//       rekognitionResponse.FaceRecords[0].Face.ExternalImageId;
-//     const imageUrl = registerData.imageUrl;
-//     const updateUserUrl = `https://customer-node.rupioo.com/user/update-user/${id}`;
-//     const updateData = {
-//       faceId,
-//       externalImageId,
-//       image: imageUrl,
-//       imageUrl,
-//     };
-//     const response = await axios.post(updateUserUrl, updateData);
-//     console.log("Update successful:", response.data);
-//     res.status(200).json({
-//       message: "Image uploaded and processed successfully",
-//       updateData,
-//       rekognitionResponse,
-//     });
-//   } catch (error) {
-//     console.log("Error updating data:", error);
-//     res.status(500).json({ error: "Error updating data" });
-//   }
-// };
+const indexFacesAndUpdate = async (
+  req,
+  res,
+  registerData,
+  rekognitionResponse
+) => {
+  try {
+    const id = registerData.userId;
+    const faceId = rekognitionResponse.FaceRecords[0].Face.FaceId;
+    const externalImageId =
+      rekognitionResponse.FaceRecords[0].Face.ExternalImageId;
+    const imageUrl = registerData.imageUrl;
+    const updateUserUrl = `https://customer-node.rupioo.com/user/update-user/${id}`;
+    const updateData = {
+      faceId,
+      externalImageId,
+      image: imageUrl,
+      imageUrl,
+    };
+    const response = await axios.post(updateUserUrl, updateData);
+    console.log("Update successful:", response.data);
+    res.status(200).json({
+      message: "Image uploaded and processed successfully",
+      updateData,
+      rekognitionResponse,
+    });
+  } catch (error) {
+    console.log("Error updating data:", error);
+    res.status(500).json({ error: "Error updating data" });
+  }
+};
 
 app.get("/api/attendanceAws/:database", async function (req, res, next) {
   try {
